@@ -406,6 +406,35 @@ func highlightLines(lexer chroma.Lexer, src string, want int) (out []string) {
 	return pad(out, want)
 }
 
+// highlightSnippetLines lexes code as the language of rel, for diff views (the
+// working-tree overlay, commit history, and PR review share one renderer).
+// The lexer is picked the way newDoc picks one for a file: by filename, then
+// by content analysis. A snippet is highlighted in isolation, so a construct
+// opened before the snippet (a block comment, a multiline string) colours
+// from the snippet start instead; the Markdown fences accept the same
+// trade-off. Unknown languages and oversized input fall back to escaped plain
+// text. Always returns exactly one entry per input line so callers can map
+// the result back onto diff rows 1:1.
+const (
+	maxSnippetBytes = 256 << 10
+	maxSnippetLines = 4000
+)
+
+func highlightSnippetLines(code, rel string) []string {
+	lines := strings.Count(code, "\n") + 1
+	if len(code) > maxSnippetBytes || lines > maxSnippetLines {
+		return plainFallback(code, lines)
+	}
+	lexer := lexers.Match(filepath.Base(rel))
+	if lexer == nil && code != "" {
+		lexer = lexers.Analyse(code)
+	}
+	if lexer == nil {
+		return plainFallback(code, lines)
+	}
+	return highlightLines(chroma.Coalesce(lexer), code, lines)
+}
+
 func plainFallback(src string, want int) []string {
 	raw := strings.Split(src, "\n")
 	out := make([]string, len(raw))

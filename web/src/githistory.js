@@ -4,7 +4,7 @@
 // full patch in the main-area commit overlay; file rows open the working-tree
 // file for context.
 import { $, S, api, apiPost, esc } from './state.js';
-import { layoutPref, parseDiff, unifiedTable, splitTable, diffHunkHeader } from './diff.js';
+import { layoutPref, parseDiff, unifiedTable, splitTable, diffHunkHeader, upgradeDiffHighlight } from './diff.js';
 import { showToast } from './ui.js';
 import { openFile } from './tabs.js';
 
@@ -243,6 +243,10 @@ function renderCommitSectionBody(body, s, mode) {
     body.append(diffHunkHeader(h));
     body.append(mode === 'unified' ? unifiedTable(h) : splitTable(h));
   }
+  // Plain text first for instant expand; colour in place when the
+  // highlighter answers. Only the expanded section is sent, never the
+  // whole commit.
+  upgradeDiffHighlight(body, s.file || '');
 }
 
 function renderCommitView() {

@@ -4,7 +4,7 @@
 // side-by-side split layout (default) or a single-column unified layout.
 // Unlike the code viewport this is not virtualized -- a file's own diff is
 // bounded in size, so a plain DOM render is simple and fast enough.
-import { $, S, doc_, esc, api } from './state.js';
+import { $, S, doc_, esc, api, apiPostJson } from './state.js';
 import { on } from './bus.js';
 import { syncPreview } from './markdown.js';
 import { setStatusNote, updateStatus } from './status.js';
@@ -152,6 +152,10 @@ function renderDiff(d) {
     appendHunks(frag, d.diffHunks, d.diffMode, true);
   }
   diffContent.append(frag);
+  // Plain text first for instant paint; colour in place when the
+  // highlighter answers. PR review shares this renderer, so it gains
+  // highlighting through the same call.
+  upgradeDiffHighlight(diffContent, d.path);
   syncDiffAgentTargets();
   if (prSyncHandler) prSyncHandler();
 }
@@ -400,6 +404,62 @@ function codeCell(text) {
   el.className = 'diff-code';
   el.innerHTML = esc(text || '') || '&nbsp;';
   return el;
+}
+
+/* ---------- syntax highlighting for diff code ---------- */
+
+// Token classes the server's highlighter can emit (see classFor in
+// highlight.go); anything else in returned markup is dropped. Mirrors the
+// allowlist the Markdown preview uses for fenced code.
+const HL_TOKENS = new Set('k kt nf nc nb nv no na nt nd np s m o p c cp gi gd gh ge gs err g'.split(' '));
+
+// Bounds a highlight request: diffs bigger than this stay plain text.
+const HL_MAX_CHARS = 256 * 1024;
+
+// Server markup is machine-generated, but only <i class=token> survives:
+// every other tag-looking chunk is escaped.
+function sanitizeHL(html) {
+  const parts = String(html).split(/(<\/?i(?:\s+class=[A-Za-z]+)?>)/g);
+  let out = '';
+  for (const p of parts) {
+    const m = /^<i\s+class=([A-Za-z]+)>$/.exec(p);
+    if (p === '</i>') out += p;
+    else if (m && HL_TOKENS.has(m[1])) out += '<i class="' + m[1] + '">';
+    else out += esc(p);
+  }
+  return out;
+}
+
+// Per-container sequence so a slow highlight response never paints over a
+// newer render of the same container.
+const hlSeq = new WeakMap();
+
+/* Colours a rendered diff's code cells as the language of path: collects the
+   plain cells, highlights them as one snippet (preserving lexer state across
+   the diff's lines), and patches the cells back in order. Shared by the
+   working-tree overlay (renderDiff below), commit history, and PR review.
+   Failures and oversized diffs silently keep the plain-text render. */
+export async function upgradeDiffHighlight(container, path) {
+  if (!container) return;
+  const cells = [...container.querySelectorAll('.diff-code')]
+    .filter(el => !el.dataset.hl && el.textContent !== '' && el.textContent !== '\u00a0');
+  if (!cells.length) return;
+  const code = cells.map(el => el.textContent).join('\n');
+  if (code.length > HL_MAX_CHARS) return;
+  const seq = (hlSeq.get(container) || 0) + 1;
+  hlSeq.set(container, seq);
+  let lines;
+  try {
+    const j = await apiPostJson('/api/highlight', { path: path || '', code });
+    lines = j.lines;
+  } catch { return; }
+  if (hlSeq.get(container) !== seq || !container.isConnected) return;
+  if (!Array.isArray(lines) || lines.length !== cells.length) return;
+  cells.forEach((el, i) => {
+    const html = sanitizeHL(lines[i] ?? '');
+    el.innerHTML = html || '&nbsp;';
+    el.dataset.hl = '1';
+  });
 }
 
 export function initDiff() {

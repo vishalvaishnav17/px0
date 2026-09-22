@@ -134,6 +134,7 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc(s.routePath("/api/raw"), s.handleRaw)
 	s.mux.HandleFunc(s.routePath("/api/markdown"), s.handleMarkdown)
 	s.mux.HandleFunc(s.routePath("/api/diff"), s.handleDiff)
+	s.mux.HandleFunc(s.routePath("/api/highlight"), s.handleHighlight)
 	s.mux.HandleFunc(s.routePath("/api/gutter"), s.handleGutter)
 	s.mux.HandleFunc(s.routePath("/api/stream"), s.handleEventStream)
 	s.mux.HandleFunc(s.routePath("/api/git/stream"), s.handleEventStream)
@@ -954,6 +955,37 @@ func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	}
 	resp["available"] = avail
 	writeJSON(w, resp)
+}
+
+// handleHighlight colours a snippet as the language of path, for diff views.
+// It is a pure function of its input: no side effects, so no localPost gate
+// like the mutating endpoints. Accepts POST JSON {path, code} (used by the
+// UI, since diffs can exceed sane URL lengths) or GET query params. Always
+// returns exactly one HTML line per input line so the caller can map them
+// back onto diff rows 1:1; unknown languages and oversized input fall back
+// to escaped plain text.
+func (s *Server) handleHighlight(w http.ResponseWriter, r *http.Request) {
+	path, code := "", ""
+	if r.Method == http.MethodPost {
+		if body, err := io.ReadAll(io.LimitReader(r.Body, 1<<20)); err == nil && len(body) > 0 {
+			var req struct {
+				Path string `json:"path"`
+				Code string `json:"code"`
+			}
+			if err := json.Unmarshal(body, &req); err == nil {
+				path, code = req.Path, req.Code
+			}
+		}
+	}
+	if code == "" && path == "" {
+		q := r.URL.Query()
+		path, code = q.Get("path"), q.Get("code")
+	}
+	lines := highlightSnippetLines(code, path)
+	if lines == nil {
+		lines = []string{}
+	}
+	writeJSON(w, map[string]any{"path": path, "lines": lines})
 }
 
 // handleGutter returns per-file changed-line ranges (new-file line numbers) for

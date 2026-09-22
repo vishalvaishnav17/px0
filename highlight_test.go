@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -282,5 +286,85 @@ func TestEvictAllClearsCache(t *testing.T) {
 	cache.mu.Unlock()
 	if countAfter != 0 || usedAfter != 0 {
 		t.Fatalf("expected empty cache after EvictAll, got count=%d used=%d", countAfter, usedAfter)
+	}
+}
+
+// highlightSnippetLines must return exactly one HTML line per input line, with
+// token markup for known languages and escaped plain text otherwise.
+func TestHighlightSnippet(t *testing.T) {
+	code := "package main\n\nfunc main() {\n\tprintln(\"<hi>\")\n}"
+	lines := highlightSnippetLines(code, "x.go")
+	if len(lines) != 5 {
+		t.Fatalf("got %d lines, want 5: %q", len(lines), lines)
+	}
+	joined := strings.Join(lines, "\n")
+	if !strings.Contains(joined, "<i class=") {
+		t.Fatalf("go snippet has no token markup: %q", joined)
+	}
+	if !strings.Contains(joined, "&lt;hi&gt;") {
+		t.Fatalf("token text not escaped: %q", joined)
+	}
+	if strings.Contains(joined, "<script") {
+		t.Fatalf("unexpected tag in output: %q", joined)
+	}
+
+	plain := highlightSnippetLines("a\nb", "file.unknownext123")
+	if len(plain) != 2 || plain[0] != "a" || plain[1] != "b" {
+		t.Fatalf("unknown language should be plain: %q", plain)
+	}
+
+	emptyLine := highlightSnippetLines("x\n\ny", "x.go")
+	if len(emptyLine) != 3 || emptyLine[1] != "" {
+		t.Fatalf("empty lines must map 1:1: %q", emptyLine)
+	}
+}
+
+func TestHighlightAPI(t *testing.T) {
+	ws := t.TempDir()
+	ix := NewIndex(ws)
+	ix.Build()
+	s := NewServer(ix, nil)
+	ts := httptest.NewServer(s.mux)
+	defer ts.Close()
+
+	post := func(path, code string) map[string]any {
+		t.Helper()
+		body, _ := json.Marshal(map[string]string{"path": path, "code": code})
+		resp, err := http.Post(ts.URL+"/api/highlight", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Fatalf("status %d", resp.StatusCode)
+		}
+		var out map[string]any
+		if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+
+	out := post("x.go", "package main\nfunc f() {}")
+	ls, _ := out["lines"].([]any)
+	if len(ls) != 2 {
+		t.Fatalf("lines = %v", out)
+	}
+	if s0, _ := ls[0].(string); !strings.Contains(s0, "<i class=") {
+		t.Fatalf("line 0 not highlighted: %q", s0)
+	}
+	// GET query form works too.
+	resp, err := http.Get(ts.URL + "/api/highlight?path=x.py&code=" + "def+f%28%29%3A")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var get map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&get); err != nil {
+		t.Fatal(err)
+	}
+	gl, _ := get["lines"].([]any)
+	if len(gl) != 1 {
+		t.Fatalf("get lines = %v", get)
 	}
 }
