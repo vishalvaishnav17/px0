@@ -168,6 +168,7 @@ function splitCommitDiffByFile(diffText) {
 
 async function selectGitCommit(sha) {
   GH.selected = sha;
+  openCommitSections.clear();
   renderGitCommits();
   const detail = $('#hist-detail');
   if (detail) detail.innerHTML = '<div class="hint">Loading diff…</div>';
@@ -182,8 +183,19 @@ async function selectGitCommit(sha) {
     if (cc) cc.innerHTML = '<div class="diff-empty">Failed to load diff: ' + esc(e.message) + '</div>';
     return;
   }
-  renderCommitDetail();
-  renderCommitView();
+  try {
+    renderCommitDetail();
+  } catch (e) {
+    console.error('renderCommitDetail failed', e);
+    if (detail) detail.innerHTML = '<div class="hint">Failed to load diff: ' + esc(e.message) + '</div>';
+  }
+  try {
+    renderCommitView();
+  } catch (e) {
+    console.error('renderCommitView failed', e);
+    const cc = $('#commitcontent');
+    if (cc) cc.innerHTML = '<div class="diff-empty">Failed to load diff: ' + esc(e.message) + '</div>';
+  }
 }
 
 function renderCommitDetail() {
@@ -199,15 +211,38 @@ function renderCommitDetail() {
     '<span class="hsub">' + esc((c && c.subject) || '') + '</span>' +
     (c ? '<span class="hmeta">' + esc(c.author) + ' · ' + esc(shortDate(c.date)) + '</span>' : '') +
     '</div>' +
-    '<div class="hdetail-files">' + (files.length ? files.map(f =>
-      '<div class="hfile" data-path="' + esc(f.Path) + '" title="Open ' + esc(f.Path) + '">' +
-      '<span class="hstatus hst-' + esc(f.Status) + '">' + esc(f.Status) + '</span>' +
-      '<span class="hfname">' + esc(f.Path) + '</span>' +
-      '</div>').join('') : '<div class="hint">No files changed.</div>') + '</div>';
+    '<div class="hdetail-files">' + (files.length ? files.map(f => {
+      const fp = f.path ?? f.Path ?? '';
+      const st = f.status ?? f.Status ?? '';
+      return '<div class="hfile" data-path="' + esc(fp) + '" title="Open ' + esc(fp) + '">' +
+      '<span class="hstatus hst-' + esc(st) + '">' + esc(st) + '</span>' +
+      '<span class="hfname">' + esc(fp) + '</span>' +
+      '</div>'; }).join('') : '<div class="hint">No files changed.</div>') + '</div>';
 }
 
 function commitDiffMode() {
   return GH.diffMode || layoutPref() || 'split';
+}
+
+// File sections expanded in the commit view, by section index. Reset on
+// every new commit selection; a split/unified switch re-renders with the
+// same set open.
+let openCommitSections = new Set();
+
+function renderCommitSectionBody(body, s, mode) {
+  body.replaceChildren();
+  const hunks = parseDiff(s.text);
+  if (!hunks.length) {
+    const p = document.createElement('div');
+    p.className = 'diff-empty';
+    p.textContent = 'No textual changes in this file.';
+    body.append(p);
+    return;
+  }
+  for (const h of hunks) {
+    body.append(diffHunkHeader(h));
+    body.append(mode === 'unified' ? unifiedTable(h) : splitTable(h));
+  }
 }
 
 function renderCommitView() {
@@ -242,21 +277,34 @@ function renderCommitView() {
     p.textContent = 'No textual changes in this commit.';
     cc.append(p);
   }
-  for (const s of sections) {
+  // Collapsed by default: only file headers render. A file's hunks parse
+  // and render on its first expand, never eagerly for the whole commit.
+  sections.forEach((s, i) => {
     const fhead = document.createElement('div');
-    fhead.className = 'commit-file-head';
+    const open = openCommitSections.has(i);
+    fhead.className = 'commit-file-head' + (open ? ' open' : '');
     fhead.dataset.file = s.file || '';
-    fhead.innerHTML = '<span class="commit-file-name">' + esc(s.file || '(unknown)') + '</span>' +
+    fhead.innerHTML = '<span class="commit-chev">›</span>' +
+      '<span class="commit-file-name">' + esc(s.file || '(unknown)') + '</span>' +
       '<button class="mini commit-open" data-path="' + esc(s.file || '') + '" title="Open working-tree file">Open file</button>';
     cc.append(fhead);
-    const hunks = parseDiff(s.text);
-    if (!hunks.length) continue;
-    for (const h of hunks) {
-      const hh = diffHunkHeader(h);
-      cc.append(hh);
-      cc.append(mode === 'unified' ? unifiedTable(h) : splitTable(h));
-    }
-  }
+    const body = document.createElement('div');
+    body.className = 'commit-file-body';
+    body.hidden = !open;
+    if (open) renderCommitSectionBody(body, s, mode);
+    cc.append(body);
+    fhead.addEventListener('click', () => {
+      const nowOpen = body.hidden;
+      body.hidden = !nowOpen;
+      fhead.classList.toggle('open', nowOpen);
+      if (nowOpen) {
+        openCommitSections.add(i);
+        renderCommitSectionBody(body, s, commitDiffMode());
+      } else {
+        openCommitSections.delete(i);
+      }
+    });
+  });
   view.hidden = false;
   $('#commit-close')?.addEventListener('click', hideCommitView);
   head.querySelectorAll('[data-cm]').forEach(b => b.addEventListener('click', () => {

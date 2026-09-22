@@ -187,6 +187,102 @@ func TestGitCreateBranch(t *testing.T) {
 	}
 }
 
+func TestGitDiscoverDeepNesting(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	ws := t.TempDir()
+	if r, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = r
+	}
+	// Repos nested three and four levels deep must be found.
+	initTestRepo(t, filepath.Join(ws, "group", "sub", "repoC"), map[string]string{"c.go": "package c\n"}, "init C")
+	initTestRepo(t, filepath.Join(ws, "a", "b", "c", "repoD"), map[string]string{"d.go": "package d\n"}, "init D")
+	// A shallow repo alongside, plus a deep plain directory that holds no repo.
+	initTestRepo(t, filepath.Join(ws, "repoA"), map[string]string{"a.go": "package a\n"}, "init A")
+	deepPlain := filepath.Join(ws, "x", "y", "z")
+	if err := os.MkdirAll(deepPlain, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(deepPlain, "x.txt"), []byte("x\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	repos := gitDiscoverRepos(ws)
+	byPath := map[string]GitRepoInfo{}
+	for _, r := range repos {
+		byPath[r.Path] = r
+	}
+	for _, want := range []string{"repoA", "group/sub/repoC", "a/b/c/repoD"} {
+		if _, ok := byPath[want]; !ok {
+			t.Fatalf("discover = %v, missing %q", repos, want)
+		}
+	}
+	if len(repos) != 3 {
+		t.Fatalf("discover = %v, want exactly 3 repos", repos)
+	}
+	// A repo stays a leaf: a nested checkout inside it is not listed twice.
+	initTestRepo(t, filepath.Join(ws, "repoA", "nested"), map[string]string{"n.go": "package n\n"}, "init nested")
+	if repos := gitDiscoverRepos(ws); len(repos) != 3 {
+		t.Fatalf("discover after nesting inside a repo = %v, want 3", repos)
+	}
+}
+
+func TestGitDiscoverWorktrees(t *testing.T) {
+	if !gitInstalled() {
+		t.Skip("git not installed")
+	}
+	ws := t.TempDir()
+	if r, err := filepath.EvalSymlinks(ws); err == nil {
+		ws = r
+	}
+	initTestRepo(t, filepath.Join(ws, "svc", "main"), map[string]string{"a.go": "package a\n"}, "init main")
+	git := func(dir string, args ...string) {
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	mkParents := func(path string) {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Worktree beside the main checkout: the walk finds it via its .git file,
+	// the worktree pass must dedupe rather than double-list it.
+	beside := filepath.Join(ws, "tickets", "T1", "svc-a")
+	mkParents(beside)
+	git(filepath.Join(ws, "svc", "main"), "worktree", "add", beside, "-b", "feat-a")
+	// Worktree nested inside the main checkout: repos are leaves so the walk
+	// alone never sees it; only the worktree pass discovers it.
+	nested := filepath.Join(ws, "svc", "main", "nested-wt")
+	git(filepath.Join(ws, "svc", "main"), "worktree", "add", nested, "-b", "feat-nested")
+	// Worktree outside the served root cannot be browsed: never listed.
+	outside := t.TempDir()
+	if r, err := filepath.EvalSymlinks(outside); err == nil {
+		outside = r
+	}
+	git(filepath.Join(ws, "svc", "main"), "worktree", "add", filepath.Join(outside, "wt-out"), "-b", "feat-out")
+
+	repos := gitDiscoverRepos(ws)
+	byPath := map[string]GitRepoInfo{}
+	for _, r := range repos {
+		byPath[r.Path] = r
+	}
+	for _, want := range []string{"svc/main", "tickets/T1/svc-a", "svc/main/nested-wt"} {
+		if _, ok := byPath[want]; !ok {
+			t.Fatalf("discover = %v, missing %q", repos, want)
+		}
+	}
+	if len(repos) != 3 {
+		t.Fatalf("discover = %v, want exactly 3 repos", repos)
+	}
+	if got := byPath["tickets/T1/svc-a"].Branch; got != "feat-a" {
+		t.Fatalf("worktree branch = %q, want feat-a", got)
+	}
+}
+
 func TestGitHistoryAPI(t *testing.T) {
 	if !gitInstalled() {
 		t.Skip("git not installed")

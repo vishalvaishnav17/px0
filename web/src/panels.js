@@ -37,13 +37,14 @@ export async function reindexWorkspace() {
 export function initPanels() {
   $('#btn-reindex').addEventListener('click', reindexWorkspace);
 
-  /* sidebar resize */
+  /* sidebar resize: the sidebar sits right of the editor, so its width
+     grows leftward from the window's right edge. */
   (() => {
     const rz = $('#resizer'); let dragging = false;
     rz.addEventListener('mousedown', e => { dragging = true; rz.classList.add('drag'); e.preventDefault(); });
     addEventListener('mousemove', e => {
       if (!dragging) return;
-      $('#side').style.width = Math.max(170, Math.min(620, e.clientX)) + 'px';
+      $('#side').style.width = Math.max(170, Math.min(620, window.innerWidth - e.clientX)) + 'px';
     });
     addEventListener('mouseup', () => { if (dragging) { dragging = false; rz.classList.remove('drag'); layout(); render(); } });
   })();

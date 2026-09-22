@@ -89,38 +89,10 @@ export async function refreshTree() {
   const version = ++expansionVersion;
   const isCurrent = () => version === expansionVersion;
   setExpandBusy(false);
-  if (!(await drawTree('', treeEl, 0, isCurrent))) return;
-  const dirs = Array.from(openDirs).sort((a, b) => a.split('/').length - b.split('/').length);
-  for (const path of dirs) {
-    if (!isCurrent()) return;
-    const dirRow = treeEl.querySelector('[data-dir="' + CSS.escape(path) + '"]');
-    const kids = treeEl.querySelector('[data-kids="' + CSS.escape(path) + '"]');
-    if (kids && dirRow) {
-      dirRow.classList.add('open');
-      kids.classList.add('open');
-      const loaded = await drawTree(path, kids, path.split('/').length, isCurrent);
-      if (!isCurrent()) return;
-      if (loaded) kids.dataset.loaded = '1';
-      else {
-        dirRow.classList.remove('open');
-        kids.classList.remove('open');
-        openDirs.delete(path);
-      }
-    } else {
-      openDirs.delete(path);
-    }
-  }
-  if (isCurrent() && treeEl.classList.contains('changed-only')) {
-    await expandDirtyDirs();
-  }
-}
-
-export function restoreOpenDirs(dirs) {
-  if (Array.isArray(dirs)) {
-    for (const d of dirs) {
-      if (typeof d === 'string') openDirs.add(d);
-    }
-  }
+  openDirs.clear();
+  // Collapsed by default: only the root level loads, everything below it
+  // renders on expand. This keeps refreshes bounded even for large trees.
+  await drawTree('', treeEl, 0, isCurrent);
 }
 
 export function collapseAllDirs() {
@@ -357,10 +329,7 @@ export async function patchTreeGitStatus(statuses = {}, dirtyDirs = {}, staged =
     }
   }
 
-  // If in changed-only mode, auto-expand any newly dirty directories
-  if (treeEl.classList.contains('changed-only')) {
-    await expandDirtyDirs();
-  }
+  // Changed-only mode stays collapsed; newly dirty folders load on expand.
 }
 
 export function updateSidebarToggleState() {
@@ -420,7 +389,6 @@ export async function setSidebarMode(mode) {
     if (btnExpand) btnExpand.hidden = true;
     expansionVersion++;
     setExpandBusy(false);
-    await expandDirtyDirs();
   } else {
     treeEl.classList.remove('changed-only');
     btnFiles?.classList.add('active');
@@ -485,9 +453,10 @@ export function initTree() {
       kids.classList.toggle('open', open);
       if (open) {
         openDirs.add(path);
-        kids.dataset.loaded = '1';
         await drawTree(path, kids, path.split('/').length);
-      } else openDirs.delete(path);
+      } else {
+        openDirs.delete(path);
+      }
       persistOpenDirs();
       return;
     }

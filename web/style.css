@@ -2064,7 +2064,9 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
 .commit-toggle button { padding: 2px 9px; border-radius: 3px; font-size: 11px; color: var(--dim); }
 .commit-toggle button.on { background: var(--bg); color: var(--accent-fg); font-weight: 600; }
 .commit-meta { font: 11px var(--mono); color: var(--faint); padding: 6px 0 10px; }
-.commit-file-head { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; padding: 5px 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; font-family: var(--ui); }
+.commit-file-head { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; padding: 5px 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; font-family: var(--ui); cursor: pointer; }
+.commit-chev { flex: none; font-size: 13px; color: var(--faint); line-height: 1; transition: transform 0.12s ease; }
+.commit-file-head.open > .commit-chev { transform: rotate(90deg); }
 .commit-file-name { font: 600 12px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commit-file-head .mini { margin-left: auto; flex: none; }
 

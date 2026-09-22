@@ -5,7 +5,7 @@ import { initTabs, openFile, restoreWorkspaceTabs, switchTab } from './tabs.js';
 import { initCursor } from './cursor.js';
 import { initHover } from './hover.js';
 import { initSelectionBar } from './selbar.js';
-import { drawTree, treeEl, initTree, revealFile, refreshTree, restoreOpenDirs, setSidebarMode, updateSidebarToggleState } from './tree.js';
+import { drawTree, treeEl, initTree, revealFile, refreshTree, setSidebarMode, updateSidebarToggleState } from './tree.js';
 import { initSearch } from './search.js';
 import { initOutline } from './outline.js';
 import { initPanels } from './panels.js';
@@ -91,12 +91,7 @@ initLineComment();
     const emptyVerEl = $('#empty-ver');
     if (emptyVerEl) emptyVerEl.textContent = 'v' + S.meta.version;
   }
-  try {
-    const session = await api('/api/session');
-    if (session && Array.isArray(session.openDirs) && session.openDirs.length > 0) {
-      restoreOpenDirs(session.openDirs);
-    }
-  } catch {}
+  // The tree boots collapsed: folders load their contents on expand.
   await refreshTree();
   initGitStream();
 

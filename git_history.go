@@ -42,6 +42,11 @@ var (
 	validBranch = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9/._-]*$`)
 )
 
+// maxGitRepos bounds discovery (and every per-repo status/diff fan-out built
+// on it). Workspaces with per-ticket worktrees can hold well over a hundred
+// checkouts, so this must clear that comfortably while staying bounded.
+const maxGitRepos = 300
+
 // gitIsRepoDir reports whether abs contains a .git dir or file (plain repo,
 // worktree, or submodule) without shelling out.
 func gitIsRepoDir(abs string) bool {
@@ -53,8 +58,8 @@ func gitIsRepoDir(abs string) bool {
 }
 
 // gitHasNestedRepos is the fast path for gitAvailable when the served root
-// itself is not a repo: true when any immediate child (or grandchild, for
-// workspace/group/repo layouts) contains a .git entry.
+// itself is not a repo: true when the recursive walk finds any repository
+// nested at any depth below root.
 func gitHasNestedRepos(root string) bool {
 	if gitDisabled {
 		return false
@@ -66,9 +71,13 @@ func gitHasNestedRepos(root string) bool {
 }
 
 // gitDiscoverRepos lists repositories under root. When root itself is a repo
-// it returns just that one (Path ""). Otherwise it scans immediate children
-// and one level deeper for .git entries, so a folder named "workspace"
-// holding several checkouts is served as a multi-repo workspace.
+// it returns just that one (Path ""). Otherwise it walks the directory tree
+// to any depth recording every directory that holds a .git entry, so a
+// folder holding several checkouts at any nesting (workspace/group/.../repo)
+// is served as a multi-repo workspace. Directories already identified as
+// repositories are not descended into; symlinks, VCS internals and
+// directories with more than 200 entries are skipped, and at most
+// maxGitRepos repositories are returned.
 func gitDiscoverRepos(root string) []GitRepoInfo {
 	if gitDisabled {
 		return nil
@@ -80,8 +89,7 @@ func gitDiscoverRepos(root string) []GitRepoInfo {
 		branch := gitCurrentBranch(root)
 		return []GitRepoInfo{{Name: filepath.Base(root), Path: "", Branch: branch}}
 	}
-	ents, err := os.ReadDir(root)
-	if err != nil {
+	if _, err := os.ReadDir(root); err != nil {
 		return nil
 	}
 	var out []GitRepoInfo
@@ -113,49 +121,109 @@ func gitDiscoverRepos(root string) []GitRepoInfo {
 			name = filepath.Base(root)
 		}
 		out = append(out, GitRepoInfo{Name: name, Path: rel, Branch: gitCurrentBranch(abs)})
-		if len(out) >= 100 {
+		if len(out) >= maxGitRepos {
 			return
 		}
 	}
-	for _, e := range ents {
-		if !e.IsDir() || e.Type()&os.ModeSymlink != 0 {
+	// Breadth-first walk with an explicit queue; "" is root itself. Shallow
+	// checkouts are recorded before deeper ones, so if the cap ever binds it
+	// drops the deepest worktrees first, never the primary checkouts. A
+	// directory that holds a repo is recorded as a leaf and never descended
+	// into, so the walk stops at repo boundaries instead of sweeping whole
+	// checkouts.
+	queue := []string{""}
+	visited := 0
+	for len(queue) > 0 && len(out) < maxGitRepos {
+		rel := queue[0]
+		queue = queue[1:]
+		abs := root
+		if rel != "" {
+			abs = filepath.Join(root, filepath.FromSlash(rel))
+		}
+		ents, err := os.ReadDir(abs)
+		if err != nil {
 			continue
 		}
-		name := e.Name()
-		if vcsDirs[name] {
+		if rel != "" && len(ents) > 200 {
 			continue
 		}
-		rel := name
-		abs := filepath.Join(root, name)
-		if gitIsRepoDir(abs) {
-			add(rel)
-			continue
+		visited++
+		if visited > 5000 {
+			break
 		}
-		// One level deeper: workspace/group/repo.
-		sub, err := os.ReadDir(abs)
-		if err != nil || len(sub) > 200 {
-			continue
-		}
-		for _, s := range sub {
-			if !s.IsDir() || s.Type()&os.ModeSymlink != 0 {
+		for _, e := range ents {
+			if !e.IsDir() || e.Type()&os.ModeSymlink != 0 {
 				continue
 			}
-			if vcsDirs[s.Name()] {
+			name := e.Name()
+			if vcsDirs[name] {
 				continue
 			}
-			if gitIsRepoDir(filepath.Join(abs, s.Name())) {
-				add(filepath.Join(rel, s.Name()))
+			child := name
+			if rel != "" {
+				child = rel + "/" + name
 			}
-			if len(out) >= 100 {
+			if gitIsRepoDir(filepath.Join(root, filepath.FromSlash(child))) {
+				add(child)
+				continue
+			}
+			queue = append(queue, child)
+		}
+	}
+	// Worktree pass: a `git worktree add` checkout nested inside another
+	// repository is invisible to the walk above (repos are leaves), so ask
+	// every discovered repo for its registered worktrees. Entries outside
+	// the served root cannot be browsed and are skipped; the rest go through
+	// add(), which deduplicates against the walk results, verifies with git
+	// (stale and bare entries fall out there: neither holds a .git entry),
+	// and enforces the cap.
+	seed := append([]GitRepoInfo(nil), out...)
+	for _, r := range seed {
+		if len(out) >= maxGitRepos {
+			break
+		}
+		repoAbs := root
+		if r.Path != "" {
+			repoAbs = filepath.Join(root, filepath.FromSlash(r.Path))
+		}
+		for _, wt := range gitWorktreePaths(repoAbs) {
+			rel, err := filepath.Rel(root, wt)
+			if err != nil || rel == "." || rel == ".." ||
+				strings.HasPrefix(rel, ".."+string(filepath.Separator)) ||
+				filepath.IsAbs(rel) {
+				continue
+			}
+			add(filepath.ToSlash(rel))
+			if len(out) >= maxGitRepos {
 				break
 			}
-		}
-		if len(out) >= 100 {
-			break
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Path < out[j].Path })
 	return out
+}
+
+// gitWorktreePaths returns the absolute paths of every worktree registered
+// for the repository at repoAbs, main checkout first. Empty when git is
+// missing or the directory is not a repository.
+func gitWorktreePaths(repoAbs string) []string {
+	out, err := exec.Command("git", "-C", repoAbs, "worktree", "list", "--porcelain").Output()
+	if err != nil {
+		return nil
+	}
+	var paths []string
+	for _, block := range strings.Split(string(out), "\n\n") {
+		for _, line := range strings.Split(block, "\n") {
+			line = strings.TrimSpace(line)
+			if p, ok := strings.CutPrefix(line, "worktree "); ok {
+				if p = strings.TrimSpace(p); p != "" {
+					paths = append(paths, p)
+				}
+				break // one path per block; the rest is HEAD/branch state
+			}
+		}
+	}
+	return paths
 }
 
 // gitRepoAbs validates a client-supplied repo selector ("" for the root repo,
