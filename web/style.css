@@ -2018,6 +2018,57 @@ body.hide-git-gutter .g-git, body.hide-git-gutter [class*="git-"] { display: non
 .settings-btn-primary:hover {
   opacity: 0.9;
 }
+
+/* ---------- git history (sidebar) ---------- */
+#history { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px 16px; }
+#history[hidden] { display: none; }
+.hist-controls { display: flex; flex-direction: column; gap: 6px; }
+.hist-repo {
+  width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 5px;
+  padding: 5px 8px; font-size: 12px; color: var(--fg);
+}
+.hist-branch-row { display: flex; align-items: center; gap: 6px; font-size: 12px; }
+.hist-branch { font-family: var(--mono); color: var(--accent-fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-new-btn { flex: none; }
+.hist-new-form { display: flex; flex-direction: column; gap: 6px; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+.hist-new-form[hidden] { display: none; }
+.hist-new-form input[type="text"] { background: var(--bg2); border: 1px solid var(--line); border-radius: 4px; padding: 5px 8px; font: 12px var(--mono); width: 100%; }
+.hist-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--dim); }
+.hist-new-actions { display: flex; gap: 6px; }
+.hist-commits { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; max-height: 38vh; border-top: 1px solid var(--line); padding-top: 6px; }
+.hcommit { display: flex; flex-direction: column; gap: 1px; padding: 6px 8px; border-radius: 5px; cursor: pointer; border: 1px solid transparent; }
+.hcommit:hover { background: var(--bg3); }
+.hcommit.sel { background: var(--sel); border-color: var(--accent); }
+.hsha { font: 600 11px var(--mono); color: var(--accent-fg); }
+.hsub { font-size: 12px; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hmeta { font-size: 11px; color: var(--faint); }
+.hist-more { align-self: center; margin-top: 4px; }
+.hist-detail { display: flex; flex-direction: column; gap: 6px; border-top: 1px solid var(--line); padding-top: 6px; }
+.hdetail-head { display: flex; flex-direction: column; gap: 2px; }
+.hdetail-files { display: flex; flex-direction: column; gap: 2px; max-height: 24vh; overflow-y: auto; }
+.hfile { display: flex; align-items: center; gap: 7px; padding: 4px 6px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.hfile:hover { background: var(--bg3); }
+.hstatus { font: 600 10px var(--mono); width: 14px; text-align: center; flex: none; }
+.hst-M { color: var(--accent-fg); } .hst-A { color: var(--gi); } .hst-D { color: var(--gd); }
+.hst-R { color: var(--accent-fg); } .hst-U { color: var(--gi); }
+.hfname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dim); }
+.hfile:hover .hfname { color: var(--fg); }
+
+/* ---------- commit view (main area) ---------- */
+#commitview { position: absolute; inset: 0; overflow: auto; background: var(--bg); z-index: 6; }
+#commitcontent { font: var(--fs)/var(--lh) var(--mono); padding: 12px 16px 40vh; max-width: 1100px; margin: 0 auto; }
+.commit-head { display: flex; align-items: center; gap: 10px; padding: 6px 0 4px; font-family: var(--ui); position: sticky; top: 0; background: var(--bg); z-index: 2; border-bottom: 1px solid var(--line); }
+.commit-head .mini { flex: none; }
+.commit-sub { font-size: 13px; font-weight: 600; color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-toggle { display: inline-flex; background: var(--bg3); border: 1px solid var(--line); border-radius: 5px; padding: 1px; gap: 1px; }
+.commit-toggle button { padding: 2px 9px; border-radius: 3px; font-size: 11px; color: var(--dim); }
+.commit-toggle button.on { background: var(--bg); color: var(--accent-fg); font-weight: 600; }
+.commit-meta { font: 11px var(--mono); color: var(--faint); padding: 6px 0 10px; }
+.commit-file-head { display: flex; align-items: center; gap: 10px; margin: 14px 0 4px; padding: 5px 10px; background: var(--bg2); border: 1px solid var(--line); border-radius: 6px; font-family: var(--ui); }
+.commit-file-name { font: 600 12px var(--mono); color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commit-file-head .mini { margin-left: auto; flex: none; }
+
+
 .settings-btn-secondary {
   background: var(--bg4);
   color: var(--fg);

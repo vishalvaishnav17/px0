@@ -29,7 +29,14 @@ var (
 // gitAvailable reports whether the git binary is on PATH and root sits inside a
 // working tree. Memoized per root: detection shells out once. Fails quiet -- no
 // git, no repo, or -no-git all yield false, never an error.
-func gitAvailable(root string) bool { return gitProbe(root).ok }
+// A workspace folder holding several repositories (a folder named "workspace"
+// with multiple checkouts) also counts as git-available.
+func gitAvailable(root string) bool {
+	if gitProbe(root).ok {
+		return true
+	}
+	return gitHasNestedRepos(root)
+}
 
 // gitDir returns the absolute path to the repository's .git directory.
 func gitDir(root string) string { return gitProbe(root).gitdir }
@@ -93,10 +100,13 @@ func repoRelKey(info gitInfo, root string) func(string) (string, bool) {
 // When base is "HEAD" or empty, it returns working-tree changes only.
 // When base is an arbitrary commit or ref (such as a PR merge-base),
 // it includes both files changed against base and working-tree changes.
+// When root itself is not a repo but holds several repositories (a folder
+// named "workspace" with multiple checkouts), statuses are aggregated across
+// each nested repo with workspace-relative keys.
 func gitStatusAgainst(root, base string) map[string]string {
 	info := gitProbe(root)
 	if !info.ok {
-		return nil
+		return gitStatusMulti(root, base)
 	}
 	out, err := exec.Command("git", "-C", root, "status", "--porcelain=v2", "-z", "-uall").Output()
 	if err != nil {
@@ -408,9 +418,22 @@ func gitDiff(root, relpath string) string {
 // gitDiffAgainst is gitDiff generalized to an arbitrary base ref, so a PR
 // review session (pr.go) can diff a file against the merge-base with the
 // PR's target branch instead of the working tree's HEAD.
+// In a multi-repo workspace (root holds several checkouts) the file is
+// resolved to its containing repo first.
 func gitDiffAgainst(root, relpath, base string) string {
 	if !gitAvailable(root) {
 		return ""
+	}
+	if info := gitProbe(root); !info.ok {
+		_, repoAbs, relInside := gitResolveRepo(root, relpath)
+		if repoAbs == "" {
+			return ""
+		}
+		out, err := exec.Command("git", "-C", repoAbs, "diff", "--no-color", base, "--", relInside).Output()
+		if err != nil {
+			return ""
+		}
+		return string(out)
 	}
 	out, err := exec.Command("git", "-C", root, "diff", "--no-color", base, "--", relpath).Output()
 	if err != nil {

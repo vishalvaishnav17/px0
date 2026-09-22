@@ -7,7 +7,7 @@ import { pushHistory } from './history.js';
 import { showPanel } from './panels.js';
 import { openFind } from './find.js';
 import { gotoDefinition, findReferences } from './lsp.js';
-import { revealFile } from './tree.js';
+import { revealFile, setSidebarMode } from './tree.js';
 import { showRightInspector, hideRightInspector } from './inspector.js';
 import { showCalls, openLspSetup } from './calls.js';
 import { showHelp } from './shortcuts.js';
@@ -50,6 +50,8 @@ export const COMMANDS = [
   { name: 'Close All Tabs', run: () => { while (S.tabs.length) closeTab(0); } },
   { name: withKeys('Reopen Closed Tab ({Alt+Shift+T})'), run: () => reopenClosedTab() },
   { name: 'Git: Open Pull Request…', run: () => openPalette('openpr', '') },
+  { name: 'Git: Show History (commits)', run: () => setSidebarMode('history') },
+  { name: 'Git: Show Changed Files', run: () => setSidebarMode('git') },
   { name: 'Preferences: Toggle Vim Keybindings', run: () => setVimModeEnabled(!isVimEnabled(), true) },
   { name: 'Help: Vim Keybindings Cheat Sheet', run: showVimHelp },
   { name: 'Keyboard Shortcuts', run: showHelp },

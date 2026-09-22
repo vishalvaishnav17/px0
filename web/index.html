@@ -19,8 +19,31 @@
 <div id="app">
   <!-- SECTION: Sidebar (File explorer tree) -->
   <aside id="side">
-    <header class="panel-head"><span id="root-name">-</span><span class="panel-actions"><div class="sidebar-toggle" role="group" aria-label="Explorer view mode"><button id="btn-files" class="toggle-btn active" title="File Explorer (show all files)" aria-label="File Explorer"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button id="btn-changed" class="toggle-btn" title="Git changes (show changed files only)" aria-label="Git changes"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 3-3 3.5-6 3.5"/></svg></button></div><button id="btn-collapse-tree" class="mini" title="Collapse all folders" aria-label="Collapse all folders"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 11 12 6 17 11"/><polyline points="7 18 12 13 17 18"/></svg></button><button id="btn-expand-tree" class="mini" title="Expand all project folders (ignored folders stay closed)" aria-label="Expand all project folders"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 6 12 11 17 6"/><polyline points="7 13 12 18 17 13"/></svg></button><button id="btn-reindex" class="mini" title="Re-index"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button></span></header>
+    <header class="panel-head"><span id="root-name">-</span><span class="panel-actions"><div class="sidebar-toggle" role="group" aria-label="Explorer view mode"><button id="btn-files" class="toggle-btn active" title="File Explorer (show all files)" aria-label="File Explorer"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></button><button id="btn-changed" class="toggle-btn" title="Git changes (show changed files only)" aria-label="Git changes"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="9" r="2.5"/><path d="M6 8.5v7M18 11.5c0 3-3 3.5-6 3.5"/></svg></button><button id="btn-history" class="toggle-btn" title="Git history (commits across repos)" aria-label="Git history"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 13.5"/></svg></button></div><button id="btn-collapse-tree" class="mini" title="Collapse all folders" aria-label="Collapse all folders"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 11 12 6 17 11"/><polyline points="7 18 12 13 17 18"/></svg></button><button id="btn-expand-tree" class="mini" title="Expand all project folders (ignored folders stay closed)" aria-label="Expand all project folders"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 6 12 11 17 6"/><polyline points="7 13 12 18 17 13"/></svg></button><button id="btn-reindex" class="mini" title="Re-index"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg></button></span></header>
     <div class="panel-body" id="tree"></div>
+    <!-- Git history: repos, branches, commits. Shown when the history toggle is active. -->
+    <div class="panel-body" id="history" hidden>
+      <div class="hist-controls">
+        <select id="hist-repo" class="hist-repo" title="Repository"></select>
+        <div class="hist-branch-row">
+          <span id="hist-branch" class="hist-branch" title="Current branch">—</span>
+          <span class="grow"></span>
+          <button id="hist-new-branch" class="mini hist-new-btn" title="Create new branch">+ Branch</button>
+        </div>
+        <div id="hist-new-form" class="hist-new-form" hidden>
+          <input id="hist-new-name" type="text" spellcheck="false" placeholder="new-branch-name" autocomplete="off">
+          <label class="hist-check"><input id="hist-new-checkout" type="checkbox" checked>Checkout</label>
+          <div class="hist-new-actions">
+            <button id="hist-new-create" class="footer-btn">Create</button>
+            <button id="hist-new-cancel" class="footer-btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+      <div id="hist-empty" class="hint" hidden>No git repositories in workspace.</div>
+      <div id="hist-commits" class="hist-commits"></div>
+      <button id="hist-more" class="footer-btn hist-more" hidden>Load more</button>
+      <div id="hist-detail" class="hist-detail"></div>
+    </div>
     <div id="git-panel" class="git-panel" hidden>
       <div id="git-panel-resizer" class="git-panel-resizer" title="Drag to resize"></div>
       <div class="git-panel-head">
@@ -172,6 +195,8 @@
       <div id="mdview" hidden><article id="md" class="md"></article></div>
       <!-- Diff view: covers the code view while a diff layout is active (Mod+D toggles) -->
       <div id="diffview" hidden><div id="diffcontent"></div></div>
+      <!-- Commit view: full patch of the selected history commit (sidebar history) -->
+      <div id="commitview" hidden><div id="commitcontent"></div></div>
       <!-- Image viewer: covers the code view for an image tab -->
       <div id="imgview" hidden>
         <div id="imgview-viewport">

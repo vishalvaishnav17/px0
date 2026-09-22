@@ -144,7 +144,12 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc(s.routePath("/api/git/commit-message"), s.handleGitCommitMessage)
 	s.mux.HandleFunc(s.routePath("/api/git/push"), s.handleGitPush)
 	s.mux.HandleFunc(s.routePath("/api/git/pull"), s.handleGitPull)
+	s.mux.HandleFunc(s.routePath("/api/git/repos"), s.handleGitRepos)
+	s.mux.HandleFunc(s.routePath("/api/git/branches"), s.handleGitBranches)
+	s.mux.HandleFunc(s.routePath("/api/git/branch"), s.handleGitCreateBranch)
 	s.mux.HandleFunc(s.routePath("/api/git/log"), s.handleGitLog)
+	s.mux.HandleFunc(s.routePath("/api/git/show"), s.handleGitShow)
+	s.mux.HandleFunc(s.routePath("/api/git/commit-diff"), s.handleGitCommitDiff)
 	s.mux.HandleFunc(s.routePath("/api/search"), s.handleSearch)
 	s.mux.HandleFunc(s.routePath("/api/outline"), s.handleOutline)
 	s.mux.HandleFunc(s.routePath("/api/def"), s.handleDef)
@@ -517,6 +522,7 @@ func (s *Server) handleMeta(w http.ResponseWriter, r *http.Request) {
 		"gitChanges":  gitCount,
 		"gitFiles":    gitFiles,
 		"githubToken": githubToken != "",
+		"gitRepos":    gitDiscoverRepos(s.ix.Root()),
 		"lspServers":  s.lsp.Available(),
 		"metrics":     getProcessMetrics(s.lsp),
 		"version":     version,
@@ -896,13 +902,39 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 // since checkout). Committing in that session only ever changes yourDiff, so
 // the frontend can label the two apart instead of showing one blended diff
 // that looks the same whether or not the reviewer has touched anything.
+// With ?sha=<commit> it instead returns that file's diff inside the commit, so
+// selecting a commit in the history view can reuse the file diff overlay.
 func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	_, rel, ok := s.resolvePath(r.URL.Query().Get("path"))
 	if !ok {
 		fail(w, 400, "bad path")
 		return
 	}
-	diff := gitDiffAgainst(s.ix.Root(), rel, s.diffBase)
+	sha := strings.TrimSpace(r.URL.Query().Get("sha"))
+	var diff string
+	if sha != "" {
+		if !validSHA.MatchString(sha) {
+			fail(w, 400, "invalid commit")
+			return
+		}
+		_, repoAbs, relInside := gitResolveRepo(s.ix.Root(), rel)
+		if repoAbs == "" {
+			fail(w, 400, "not in a git repo")
+			return
+		}
+		var err error
+		diff, err = gitShowFile(repoAbs, sha, relInside)
+		if err != nil {
+			if _, isUser := err.(*gitUserError); isUser {
+				fail(w, 400, err.Error())
+				return
+			}
+			fail(w, 500, err.Error())
+			return
+		}
+	} else {
+		diff = gitDiffAgainst(s.ix.Root(), rel, s.diffBase)
+	}
 	if uiVerbose {
 		status := "clean"
 		if diff != "" {

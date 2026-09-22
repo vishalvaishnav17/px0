@@ -24,6 +24,7 @@ import { initVim } from './vim.js';
 import { initImageViewer } from './imageview.js';
 import { initGitStream } from './gitstream.js';
 import { initGitPanel } from './gitpanel.js';
+import { initGitHistory } from './githistory.js';
 import { initPR } from './pr.js';
 import { initLineComment } from './linecomment.js';
 
@@ -51,6 +52,7 @@ initStatusFit();
 initSettings();
 initVim();
 initImageViewer();
+initGitHistory();
 initLineComment();
 
 // Bootstrap application lifecycle

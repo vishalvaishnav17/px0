@@ -2,6 +2,7 @@
 import { $, $$, esc, api, apiPost, apiPostJson, S } from './state.js';
 import { openFile } from './tabs.js';
 import { showToast } from './ui.js';
+import { loadGitRepos } from './githistory.js';
 
 export const treeEl = $('#tree');
 export const openDirs = new Set();
@@ -376,6 +377,13 @@ export function updateSidebarToggleState() {
       btnChanged.title = 'Git changes (show changed files only)';
     }
   }
+  const btnHist = $('#btn-history');
+  if (btnHist) {
+    const hasGit = !!S.meta?.git;
+    btnHist.disabled = !hasGit;
+    btnHist.classList.toggle('disabled', !hasGit);
+    btnHist.title = hasGit ? 'Git history (commits across repos)' : 'Git not available in workspace';
+  }
 }
 
 export async function setSidebarMode(mode) {
@@ -383,8 +391,26 @@ export async function setSidebarMode(mode) {
   const btnFiles = $('#btn-files');
   const btnCollapse = $('#btn-collapse-tree');
   const btnExpand = $('#btn-expand-tree');
+  const btnHist = $('#btn-history');
+  const histEl = $('#history');
   updateSidebarToggleState();
   const hasGitChanges = !!(S.meta?.git && S.meta.gitChanges > 0);
+
+  // History is its own sidebar pane; the file tree hides underneath it.
+  if (mode === 'history' && S.meta?.git) {
+    if (treeEl) treeEl.hidden = true;
+    if (histEl) histEl.hidden = false;
+    btnHist?.classList.add('active');
+    btnFiles?.classList.remove('active');
+    btnChanged?.classList.remove('active');
+    try {
+      await loadGitRepos();
+    } catch {}
+    return;
+  }
+  if (histEl) histEl.hidden = true;
+  if (treeEl) treeEl.hidden = false;
+  btnHist?.classList.remove('active');
 
   if (mode === 'git' && hasGitChanges) {
     treeEl.classList.add('changed-only');
@@ -424,6 +450,13 @@ export function initTree() {
 
   $('#btn-files')?.addEventListener('click', () => {
     setSidebarMode('files');
+  });
+
+  $('#btn-history')?.addEventListener('click', async () => {
+    if (!S.meta?.git) return;
+    const histEl = $('#history');
+    const open = histEl && !histEl.hidden;
+    await setSidebarMode(open ? 'files' : 'history');
   });
 
   treeEl.addEventListener('click', async e => {

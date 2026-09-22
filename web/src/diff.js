@@ -115,7 +115,7 @@ async function drawDiff(d, force = false) {
 
 function appendHunks(frag, hunks, mode, reviewable) {
   for (const hunk of hunks) {
-    frag.append(hunkHeader(hunk));
+    frag.append(diffHunkHeader(hunk));
     frag.append(mode === 'unified' ? unifiedTable(hunk, reviewable) : splitTable(hunk, reviewable));
   }
 }
@@ -252,7 +252,7 @@ export function syncDiffAgentTargets() {
   }
 }
 
-function hunkHeader(hunk) {
+export function diffHunkHeader(hunk) {
   const el = document.createElement('div');
   el.className = 'diff-hunk-head';
   el.textContent = '@@ -' + hunk.oldStart + ' +' + hunk.newStart + ' @@';
@@ -267,7 +267,7 @@ const HUNK_RE = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@[ \t]?(.*)$/;
 // list of rows tagged ctx/add/del carrying old- and/or new-file line numbers.
 // File headers (diff --git, index, ---, +++) are skipped: nothing before the
 // first @@ is kept.
-function parseDiff(text) {
+export function parseDiff(text) {
   if (!text) return [];
   const hunks = [];
   let cur = null, oldLine = 0, newLine = 0;
@@ -292,7 +292,7 @@ function parseDiff(text) {
 
 /* ---------- unified layout: one row per diff line ---------- */
 
-function unifiedTable(hunk, reviewable = true) {
+export function unifiedTable(hunk, reviewable = true) {
   const table = document.createElement('div');
   table.className = 'diff-table diff-unified';
   for (const row of hunk.rows) {
@@ -312,7 +312,7 @@ function unifiedTable(hunk, reviewable = true) {
 
 /* ---------- split layout: deletions and additions paired side by side ---------- */
 
-function splitTable(hunk, reviewable = true) {
+export function splitTable(hunk, reviewable = true) {
   const table = document.createElement('div');
   table.className = 'diff-table diff-split';
   for (const pair of pairRows(hunk.rows)) {
