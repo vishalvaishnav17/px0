@@ -26,8 +26,18 @@ const request = async (method, path, params, opts = {}) => {
   }
 
   const r = await fetch(u, fetchOpts);
-  const j = await r.json();
+  // Read text first: a non-JSON reply (wrong server on this port, a proxy
+  // or extension synthesising a response) used to surface as a bare
+  // SyntaxError with no clue where it came from. Name it instead.
+  const text = await r.text();
+  let j = null;
+  try {
+    j = text ? JSON.parse(text) : {};
+  } catch {
+    throw new Error('HTTP ' + r.status + ' ' + path + ': ' + text.slice(0, 160));
+  }
   // The body rides along: some replies, like a failed agent job, carry detail beyond the message.
+  if (!r.ok) throw Object.assign(new Error((j && j.error) || ('HTTP ' + r.status + ' ' + path)), { body: j, status: r.status });
   if (j.error) throw Object.assign(new Error(j.error), { body: j });
   return j;
 };
