@@ -1043,6 +1043,37 @@ func TestGzipWriterBodilessResponsesAndContentLength(t *testing.T) {
 	}
 }
 
+func TestGzipResponsesCarryBodies(t *testing.T) {
+	s, _ := newTestServer(t)
+	// Two rounds: the second exercises the gzip pool's Put/Get reuse path.
+	for round := 0; round < 2; round++ {
+		for _, path := range []string{"/", "/static/style.css", "/api/meta"} {
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+			rec := httptest.NewRecorder()
+			s.ServeHTTP(rec, req)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("round %d %s: status %d", round, path, rec.Code)
+			}
+			if ce := rec.Header().Get("Content-Encoding"); ce != "gzip" {
+				t.Fatalf("round %d %s: Content-Encoding = %q, want gzip", round, path, ce)
+			}
+			zr, err := gzip.NewReader(bytes.NewReader(rec.Body.Bytes()))
+			if err != nil {
+				t.Fatalf("round %d %s: gzip reader: %v (body %d bytes)", round, path, err, rec.Body.Len())
+			}
+			body, err := io.ReadAll(zr)
+			zr.Close()
+			if err != nil {
+				t.Fatalf("round %d %s: reading gzip body: %v", round, path, err)
+			}
+			if len(body) == 0 {
+				t.Fatalf("round %d %s: decompressed body is empty", round, path)
+			}
+		}
+	}
+}
+
 func TestChildrenReturnsCopy(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("hello"), 0o644)

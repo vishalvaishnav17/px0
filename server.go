@@ -271,8 +271,11 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")
 		gz := gzipPool.Get().(*gzip.Writer)
+		// Pooled writers target io.Discard; retarget one at the response so the
+		// compressed bytes actually reach the client.
+		gz.Reset(rec)
 		gw := &gzipWriter{ResponseWriter: rec, w: gz}
-		defer func() { gz.Close(); gzipPool.Put(gz) }()
+		defer func() { gz.Close(); gz.Reset(io.Discard); gzipPool.Put(gz) }()
 		out = gw
 	}
 
