@@ -544,12 +544,18 @@ func parseNewStart(hdr string) int {
 	return 1
 }
 
-// GitCommit represents a single commit in git log.
+// GitCommit represents a single commit in git log. Hash is the compact
+// identifier used by the git panel; SHA/Short and the remaining fields are
+// used by the full history view.
 type GitCommit struct {
-	Hash    string `json:"hash"`
+	Hash    string `json:"hash,omitempty"`
+	SHA     string `json:"sha,omitempty"`
+	Short   string `json:"short,omitempty"`
 	Subject string `json:"subject"`
 	Author  string `json:"author"`
+	Email   string `json:"email,omitempty"`
 	Date    string `json:"date"`
+	Body    string `json:"body,omitempty"`
 }
 
 // gitRecentCommits returns up to count recent commits from HEAD.

@@ -124,7 +124,9 @@ func (s *Server) handleGitLog(w http.ResponseWriter, r *http.Request) {
 		fail(w, 500, err.Error())
 		return
 	}
-	writeJSON(w, map[string]any{"repo": sel, "commits": commits, "limit": limit, "skip": skip, "hasMore": len(commits) == limit})
+	branch := gitCurrentBranch(repoAbs)
+	commitsURL := gitCommitsWebURL(repoAbs, branch)
+	writeJSON(w, map[string]any{"repo": sel, "commits": commits, "limit": limit, "skip": skip, "hasMore": len(commits) == limit, "commitsUrl": commitsURL})
 }
 
 func (s *Server) handleGitShow(w http.ResponseWriter, r *http.Request) {

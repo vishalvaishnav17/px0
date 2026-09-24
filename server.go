@@ -1323,27 +1323,6 @@ func (s *Server) handleGitPull(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "message": "pulled the latest changes"})
 }
 
-// handleGitLog returns recent commits from HEAD (default 5).
-func (s *Server) handleGitLog(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		fail(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-	limit := 5
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, err := strconv.Atoi(l); err == nil && n > 0 && n <= 50 {
-			limit = n
-		}
-	}
-	branch := gitCurrentBranch(s.ix.Root())
-	commits := gitRecentCommits(s.ix.Root(), limit)
-	commitsURL := gitCommitsWebURL(s.ix.Root(), branch)
-	writeJSON(w, map[string]any{
-		"commits":    commits,
-		"commitsUrl": commitsURL,
-	})
-}
-
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
 	q := r.URL.Query()

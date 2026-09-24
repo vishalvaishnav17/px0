@@ -19,17 +19,6 @@ type GitRepoInfo struct {
 	Branch string `json:"branch"`
 }
 
-// GitCommit is one row of `git log`.
-type GitCommit struct {
-	SHA     string `json:"sha"`
-	Short   string `json:"short"`
-	Author  string `json:"author"`
-	Email   string `json:"email"`
-	Date    string `json:"date"`
-	Subject string `json:"subject"`
-	Body    string `json:"body"`
-}
-
 // GitCommitFile is one path touched by a commit.
 type GitCommitFile struct {
 	Path   string `json:"path"`
@@ -380,19 +369,6 @@ func gitStatusSingle(repoAbs, base string) map[string]string {
 	return status
 }
 
-// gitCurrentBranch returns the current branch name, "HEAD" when detached, or
-// "" when it cannot be determined.
-func gitCurrentBranch(repoAbs string) string {
-	if gitDisabled || repoAbs == "" {
-		return ""
-	}
-	out, err := exec.Command("git", "-C", repoAbs, "rev-parse", "--abbrev-ref", "HEAD").Output()
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
 // gitListBranches returns the current branch plus all local branch names.
 func gitListBranches(repoAbs string) (string, []string, error) {
 	cur := gitCurrentBranch(repoAbs)
@@ -501,6 +477,7 @@ func gitLog(repoAbs string, limit, skip int) ([]GitCommit, error) {
 			body = strings.TrimSpace(parts[6])
 		}
 		commits = append(commits, GitCommit{
+			Hash:    strings.TrimSpace(parts[1]),
 			SHA:     strings.TrimSpace(parts[0]),
 			Short:   strings.TrimSpace(parts[1]),
 			Author:  strings.TrimSpace(parts[2]),
