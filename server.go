@@ -62,10 +62,11 @@ func cleanBasePath(p string) string {
 type Server struct {
 	ix        *Index
 	lsp       *lspManager
-	agent     *agentManager // nil unless main wires editing for this session
-	pr        *prSession    // nil unless main launched this process as `px0 pr ...`
-	diffBase  string        // ref /api/diff and /api/gutter diff against; "HEAD" unless in PR mode
-	prHeadSHA string        // PR mode only: the checked-out PR head commit. Frozen boundary between
+	agent     *agentManager  // nil unless main wires editing for this session
+	threads   *threadManager // nil unless editing is wired: threads run on the same harness
+	pr        *prSession     // nil unless main launched this process as `px0 pr ...`
+	diffBase  string         // ref /api/diff and /api/gutter diff against; "HEAD" unless in PR mode
+	prHeadSHA string         // PR mode only: the checked-out PR head commit. Frozen boundary between
 	// the PR's own diff (diffBase..prHeadSHA) and the reviewer's local edits
 	// since checkout (prHeadSHA..working tree); refreshed on Pull.
 	gitWatcher *GitWatcher
@@ -170,6 +171,13 @@ func (s *Server) registerRoutes() {
 	s.mux.HandleFunc(s.routePath("/api/agent/batch"), s.handleAgentBatchEdit)
 	s.mux.HandleFunc(s.routePath("/api/agent/job"), s.handleAgentJob)
 	s.mux.HandleFunc(s.routePath("/api/agent/cancel"), s.handleAgentCancel)
+	s.mux.HandleFunc(s.routePath("/api/threads"), s.handleThreads)
+	s.mux.HandleFunc(s.routePath("/api/threads/get"), s.handleThreadGet)
+	s.mux.HandleFunc(s.routePath("/api/threads/create"), s.handleThreadCreate)
+	s.mux.HandleFunc(s.routePath("/api/threads/send"), s.handleThreadSend)
+	s.mux.HandleFunc(s.routePath("/api/threads/cancel"), s.handleThreadCancel)
+	s.mux.HandleFunc(s.routePath("/api/threads/delete"), s.handleThreadDelete)
+	s.mux.HandleFunc(s.routePath("/api/threads/stream"), s.handleThreadStream)
 	s.mux.HandleFunc(s.routePath("/api/settings"), s.handleSettings)
 	s.mux.HandleFunc(s.routePath("/api/pr/meta"), s.handlePRMeta)
 	s.mux.HandleFunc(s.routePath("/api/pr/comments"), s.handlePRComments)
@@ -417,6 +425,7 @@ func fail(w http.ResponseWriter, code int, msg string) {
 func (s *Server) SetAgent(a *agentManager) {
 	s.agent = a
 	if a != nil {
+		s.threads = newThreadManager(a, s.ix.Root())
 		a.onEdit = func() {
 			if s.gitWatcher != nil {
 				s.gitWatcher.Trigger()
@@ -1202,26 +1211,29 @@ func (s *Server) handleGitCommitMessage(w http.ResponseWriter, r *http.Request) 
 	if !s.agentOrFail(w) {
 		return
 	}
-	diff := gitStagedDiff(s.ix.Root())
-	if strings.TrimSpace(diff) == "" {
+	root := s.ix.Root()
+	files := gitStagedFiles(root)
+	if len(files) == 0 {
 		// Auto-stage all uncommitted changes if nothing is staged
-		if gitHasUncommittedChanges(s.ix.Root()) {
-			_ = gitStage(s.ix.Root(), ".")
-			diff = gitStagedDiff(s.ix.Root())
+		if gitHasUncommittedChanges(root) {
+			_ = gitStage(root, ".")
+			files = gitStagedFiles(root)
 			if s.gitWatcher != nil {
 				s.gitWatcher.Trigger()
 			}
 		}
 	}
-	if strings.TrimSpace(diff) == "" {
+	if len(files) == 0 {
 		fail(w, http.StatusBadRequest, "nothing staged to generate a message for")
 		return
 	}
+	stat := gitStagedStat(root)
+	diff := gitStagedDiff(root)
 	instruction := ""
 	if cfg := readSettings(); cfg.GitCommitMessageInstruction != nil {
 		instruction = strings.TrimSpace(*cfg.GitCommitMessageInstruction)
 	}
-	job, err := s.agent.StartPrompt("commit message", commitMessagePrompt(diff, instruction))
+	job, err := s.agent.StartPrompt("commit message", commitMessagePrompt(files, stat, diff, instruction))
 	if err != nil {
 		code := http.StatusBadGateway
 		if errors.Is(err, errAgentNone) {
@@ -1530,5 +1542,12 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 		})
 	default:
 		fail(w, 405, "method not allowed")
+	}
+}
+
+// CloseThreads stops every thread turn still running at shutdown.
+func (s *Server) CloseThreads() {
+	if s.threads != nil {
+		s.threads.Close()
 	}
 }

@@ -360,6 +360,7 @@ type agentJob struct {
 	Changed    []string         `json:"changed"`              // Files detected as modified after job execution
 	Ms         int64            `json:"ms"`                   // Elapsed runtime in milliseconds
 	Tracked    bool             `json:"tracked"`              // Whether telemetry tracking has been recorded
+	ThreadID   string           `json:"threadId,omitempty"`   // The thread this edit runs as, when it runs as one
 	BatchCount int              `json:"batchCount,omitempty"` // Number of items in batch review edit
 	Items      []agentBatchItem `json:"items,omitempty"`      // Detailed batch items if multi-file edit
 
@@ -439,6 +440,10 @@ type agentManager struct {
 	jobs     map[int64]*agentJob
 	seq      int64
 	onEdit   func()
+
+	// Set by the thread manager: inline and batch edits run as threads.
+	threadJob    func(id int64) *agentJob // id 0 means the most recent
+	threadCancel func(id int64) bool      // id 0 means every one running
 }
 
 // newAgentManager wires discovery and restores the remembered choice. A flag
@@ -613,6 +618,17 @@ func (m *agentManager) Model() string {
 	return m.models[m.selected]
 }
 
+// current returns the selected harness, its headless argv and its model, read
+// together so a run never mixes one harness's name with another's flags.
+func (m *agentManager) current() (string, []string, string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.args == nil {
+		return "", nil, ""
+	}
+	return m.selected, append([]string(nil), m.args...), m.models[m.selected]
+}
+
 func (m *agentManager) Pinned() bool {
 	if m == nil {
 		return false
@@ -686,7 +702,6 @@ func (m *agentManager) Job(id int64) *agentJob {
 		return nil
 	}
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	j := m.jobs[id]
 	if id == 0 {
 		for _, cand := range m.jobs {
@@ -695,19 +710,38 @@ func (m *agentManager) Job(id int64) *agentJob {
 			}
 		}
 	}
-	if j == nil {
-		return nil
+	var cp *agentJob
+	if j != nil {
+		c := *j
+		c.Log = j.out.String()
+		c.Stdout = c.Log
+		if j.stderr != nil {
+			c.Stderr = j.stderr.String()
+		}
+		if c.Running {
+			c.Ms = time.Since(j.start).Milliseconds()
+		}
+		cp = &c
 	}
-	cp := *j
-	cp.Log = j.out.String()
-	cp.Stdout = cp.Log
-	if j.stderr != nil {
-		cp.Stderr = j.stderr.String()
+	lookup := m.threadJob
+	m.mu.Unlock()
+
+	// Inline and batch edits run as threads and share this id space, so one
+	// poll endpoint serves both. Asked for the latest, the newer of the two wins.
+	if lookup != nil {
+		if tj := lookup(id); tj != nil && (cp == nil || tj.ID > cp.ID) {
+			return tj
+		}
 	}
-	if cp.Running {
-		cp.Ms = time.Since(j.start).Milliseconds()
-	}
-	return &cp
+	return cp
+}
+
+// nextJobID hands out an id from the sequence every job shares.
+func (m *agentManager) nextJobID() int64 {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.seq++
+	return m.seq
 }
 
 // anyRunningLocked reports whether any job is still in flight. Callers hold m.mu.
@@ -1069,6 +1103,13 @@ func (m *agentManager) CancelJob(id int64) bool {
 		return false
 	}
 	m.mu.Lock()
+	tc := m.threadCancel
+	m.mu.Unlock()
+	fromThreads := tc != nil && tc(id)
+	if fromThreads && id != 0 {
+		return true
+	}
+	m.mu.Lock()
 	defer m.mu.Unlock()
 	if id != 0 {
 		j := m.jobs[id]
@@ -1096,7 +1137,7 @@ func (m *agentManager) CancelJob(id int64) bool {
 		cancel()
 		cancelled = true
 	}
-	return cancelled
+	return cancelled || fromThreads
 }
 
 func (m *agentManager) Close() { m.Cancel() }
@@ -1210,10 +1251,10 @@ func agentBatchPrompt(items []itemWithSnippet) string {
 }
 
 // commitMessagePrompt asks the harness to write a commit message for the
-// currently staged diff. instruction is the user's
-// git.commitMessageInstruction setting (empty when unset), appended verbatim
-// so it can refine or override the base convention below.
-func commitMessagePrompt(diff, instruction string) string {
+// staged changes. instruction is the user's git.commitMessageInstruction
+// setting (empty when unset), appended verbatim so it can refine or override
+// the base convention below.
+func commitMessagePrompt(files []string, stat, diff, instruction string) string {
 	var b strings.Builder
 	b.WriteString("Write a git commit message for the staged changes below.\n")
 	b.WriteString("Rules: imperative mood, a concise summary line under 72 characters, a blank line before an optional body, and explain why rather than just what changed.\n")
@@ -1221,8 +1262,27 @@ func commitMessagePrompt(diff, instruction string) string {
 	if instruction != "" {
 		fmt.Fprintf(&b, "\nAdditional instructions from the user: %s\n", instruction)
 	}
-	b.WriteString("\nStaged diff:\n")
-	b.WriteString(diff)
+	if len(files) > 0 {
+		fmt.Fprintf(&b, "\nChanged files (%d):\n", len(files))
+		maxFiles := 100
+		for i, f := range files {
+			if i >= maxFiles {
+				fmt.Fprintf(&b, "... and %d more files\n", len(files)-maxFiles)
+				break
+			}
+			fmt.Fprintf(&b, "- %s\n", f)
+		}
+	}
+	if strings.TrimSpace(stat) != "" {
+		b.WriteString("\nSummary of changes (diffstat):\n")
+		b.WriteString(stat)
+		b.WriteString("\n")
+	}
+	if strings.TrimSpace(diff) != "" {
+		b.WriteString("\nStaged diff:\n")
+		b.WriteString(diff)
+		b.WriteString("\n")
+	}
 	return b.String()
 }
 
@@ -1297,7 +1357,7 @@ func (s *Server) handleAgentEdit(w http.ResponseWriter, r *http.Request) {
 	l1, _ := strconv.Atoi(q.Get("l1"))
 	l2, _ := strconv.Atoi(q.Get("l2"))
 
-	job, err := s.agent.Start(abs, rel, l1, l2, q.Get("instruction"), q.Get("force") == "1")
+	job, err := s.threads.StartEdit([]agentBatchItem{{Abs: abs, Path: rel, L1: l1, L2: l2, Instruction: q.Get("instruction")}})
 	if err != nil {
 		code := 400
 		if errors.Is(err, errAgentBusy) || errors.Is(err, errAgentDirty) {
@@ -1402,7 +1462,7 @@ func (s *Server) handleAgentBatchEdit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	job, err := s.agent.StartBatch(items, req.Force)
+	job, err := s.threads.StartEdit(items)
 	if err != nil {
 		code := 400
 		if errors.Is(err, errAgentBusy) || errors.Is(err, errAgentDirty) {

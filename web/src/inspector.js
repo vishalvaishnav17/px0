@@ -1,5 +1,6 @@
 // web/src/inspector.js
 import { $, $$, esc, S, doc_, api } from './state.js';
+import { emit } from './bus.js';
 import { layout, render } from './renderer.js';
 import { updateStatus, setStatusNote } from './status.js';
 import { openFile, centerLine } from './tabs.js';
@@ -29,6 +30,8 @@ export function setRightInspectorTab(tab) {
   $('#pane-right-symbols')?.classList.toggle('active', tab === 'symbols');
   $('#pane-right-calls')?.classList.toggle('active', tab === 'calls');
   $('#pane-right-search')?.classList.toggle('active', tab === 'search');
+  $('#pane-right-threads')?.classList.toggle('active', tab === 'threads');
+  if (tab === 'threads') emit('threads:shown');
   if (tab === 'symbols') {
     loadOutline();
     $('#right-symbols-filter')?.focus();
@@ -127,6 +130,7 @@ export function initInspector() {
   }));
 
   $('#btn-close-right')?.addEventListener('click', hideRightInspector);
+  $('#btn-open-right')?.addEventListener('click', () => showRightInspector($('#tab-threads')?.hidden === false ? 'threads' : 'refs'));
 
   /* Right inspector resizer */
   (() => {
@@ -165,7 +169,8 @@ export function initInspector() {
       if (!g) return;
       const hidden = g.style.display === 'none';
       g.style.display = hidden ? '' : 'none';
-      $('.ar', t).innerHTML = hidden ? '&#9660;' : '&#9654;';
+      const ar = $('.ar', t);
+      if (ar) ar.innerHTML = hidden ? '&#9660;' : '&#9654;';
       return;
     }
     const r = e.target.closest('.rline');

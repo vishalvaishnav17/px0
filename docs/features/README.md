@@ -1,6 +1,6 @@
 # px0 Features Guide
 
-px0 is an ultra-fast, zero-config code reader and navigator specifically optimized for fast reads, remote inspection, and AI-assisted workflows. It provides instant access to codebases of any size with minimal resource consumption (~20 MB RAM, < 1 ms startup).
+px0 is an ultra-fast, zero-config code reader and navigator specifically optimized for fast reads, remote inspection, and AI-assisted workflows. It provides instant access to codebases of any size with minimal resource consumption (~20–30 MB server RAM, ~100–180 MB total including the browser tab, < 1 ms startup).
 
 This directory provides comprehensive documentation for all px0 user-facing features, detailing how each capability works, its role in developer and AI agent pairing workflows, interactive controls, and configuration options.
 
@@ -17,6 +17,7 @@ This directory provides comprehensive documentation for all px0 user-facing feat
 | **Git Awareness, Diffs & Stage/Commit/Push/Pull** | `Cmd/Ctrl+D` | Real-time status stream, stat cache fast-path, split / unified diffs, a sidebar panel to stage/commit/push/fast-forward-pull, and AI-written commit messages | [Git Integration](git-integration.md) |
 | **GitHub PR Review** | `px0 <pr-url>`, `Alt+R` | Full-tree checkout of a pull request, merge-base diffing, draft comments with Approve / Request Changes / Comment, and committing/pushing/pulling straight from the checkout | [GitHub PR Review](github-pr-review.md) |
 | **Coding Agent Editing** | `Alt+E`, Right-click | Delegating edits to Claude Code, Gemini CLI, Cursor Agent, and more | [Agent Editing](agent-editing.md) |
+| **Threads** | `Alt+T` | Long-running, multi-turn conversations with your coding harness that can read and change any file, with per-turn changed files | [Threads](threads.md) |
 | **Semantic Code Intelligence** | `F12`, `Shift+F12`, `Alt+Shift+H` | Go to Definition, Find References, Call Trails, and Hover docs | [LSP & Intelligence](lsp-code-intelligence.md) |
 | **Markdown Preview** | `Alt+M` | Full GFM preview, syntax-highlighted code fences, and scroll sync | [Markdown Preview](markdown-preview.md) |
 | **Image Viewer & Assets** | Click image file / lightbox | Standalone image tabs, zoom/pan transforms, and markdown lightbox | [Image Viewer](image-viewer.md) |
@@ -66,6 +67,7 @@ Modern developers spend substantial time verifying diffs and reviewing code gene
 px0 intentionally omits a heavyweight text editor in favor of direct collaboration with the user's preferred coding agents:
 
 - **[Editing with Coding Agents](agent-editing.md)**: Select any code block in a source file or git diff, press `Alt+E` (or right-click), describe the required change, and px0 delegates the task directly to your chosen agent harness (Claude Code, Gemini CLI, Cursor Agent, Antigravity, OpenCode, Codex, Aider, or Goose). Execution progress streams to the launch terminal, while px0 automatically detects file changes and reloads tabs in place upon completion.
+- **[Threads](threads.md)**: For questions and multi-file work, select code and press `Alt+T` to open a long-running conversation in the right sidebar. The harness can read and change any file, replies stream in with the files each turn touched, and every message continues the same conversation. Threads are saved and survive restarts.
 - **[Selection Toolbar & Context Actions](selection-actions.md)**: High-ergonomic footer toolbar providing instant buttons to copy canonical path:line references (`Alt+C`), copy formatted code snippets with surrounding context tailored for LLM chat windows (`Alt+A`), find usages (`Alt+U`), and dispatch inline edits (`Alt+E`).
 
 ---
@@ -86,7 +88,7 @@ px0 adapts to developer habits and viewing environments without requiring manual
 - **[Settings & Preferences System](settings-and-configuration.md)**: Comprehensive settings manager accessible via `Cmd/Ctrl+,`. Offers a VS Code-style graphical UI with interactive attribute pills alongside a raw JSON editor (`~/.px0/settings.json`) that updates themes, typography, diff layouts, and search behavior in real time without refreshing the browser.
 - **[Themes & Styling](themes-and-styling.md)**: 14 built-in dark and light themes crafted for high readability and visual consistency across all panels, diffs, and markdown documents.
 - **[Vim Keybindings & Modal Navigation](vim-mode.md)**: Full modal navigation emulation supporting Normal, Visual, and Motion modes for developers accustomed to Vim, Neovim, or Helix.
-- **[File Explorer & Workspace Management](file-explorer.md)**: Dense, clean file tree with single-child folder compacting, `.gitignore` dimming, expand/collapse-all buttons, and tab lifecycle controls (`Alt+1..9`, `Ctrl+Tab`, `Alt+W`).
+- **[File Explorer & Workspace Management](file-explorer.md)**: Dense, clean file tree with single-child folder compacting, `.gitignore` dimming, expand/collapse-all buttons, tab shortcuts (`Alt+1..9`, `Ctrl+Tab`, `Alt+W`), and right-click tab close actions.
 
 ---
 

@@ -179,6 +179,7 @@ function mdSetImage(img, src, base) {
   } else if (src.startsWith('//')) {
     img.setAttribute('src', src);
     img.dataset.origSrc = src;
+  } else if (src) {
     const t = mdLocal(src, base);
     if (t) {
       const rawUrl = new URL('api/raw?path=' + encodeURIComponent(t.path), document.baseURI || location.href).href;
@@ -422,7 +423,19 @@ export function initMarkdown() {
 
   mdArticle.addEventListener('click', e => {
     const copy = e.target.closest('.md-copy');
-    if (copy) { copyToClipboard($('pre', copy.parentElement).textContent, 'Copied code block'); return; }
+    if (copy) {
+      const pre = $('pre', copy.parentElement);
+      if (pre) {
+        copyToClipboard(pre.textContent || '', 'Copied code block');
+        copy.classList.add('copied');
+        copy.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 8.5 6.5 11.5 12.5 5.5"/></svg>';
+        setTimeout(() => {
+          copy.classList.remove('copied');
+          copy.innerHTML = '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"/><path d="M10.5 3.5V3a1.5 1.5 0 0 0-1.5-1.5H4A1.5 1.5 0 0 0 2.5 3v5A1.5 1.5 0 0 0 4 9.5h.5"/></svg>';
+        }, 1400);
+      }
+      return;
+    }
 
     // Standalone image click opens interactive lightbox
     const img = e.target.closest('img.md-zoomable');
@@ -500,12 +513,12 @@ export function openLightbox(img) {
     };
     lbCopyPath.hidden = false;
     lbCopyPath.onclick = () => {
-      copyToClipboard(rawPath, 'Copied image path');
+      copyToClipboard(rawPath, 'Copied image path', lbCopyPath);
     };
   } else {
     lbOpenTab.hidden = true;
     lbCopyPath.onclick = () => {
-      copyToClipboard(src, 'Copied image URL');
+      copyToClipboard(src, 'Copied image URL', lbCopyPath);
     };
   }
 
